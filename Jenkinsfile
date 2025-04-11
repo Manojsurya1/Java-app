@@ -109,5 +109,48 @@ pipeline {
                 }
             }
         }
+
+        stage('Terraform: Create EKS Cluster') {
+            steps {
+                script {
+                    dir('eks_module') {
+                        sh 'terraform init'
+                        if (params.action == 'create') {
+                            sh 'terraform apply -auto-approve'
+                        } else {
+                            sh 'terraform destroy -auto-approve'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Configure kubeconfig') {
+            when { expression { params.action == 'create' } }
+            steps {
+                script {
+                    sh 'aws eks update-kubeconfig --name demo-cluster1 --region us-west-1'
+                }
+            }
+        }
+
+        stage('Terraform: Deploy App to EKS') {
+            steps {
+                script {
+                    dir('terraform-app-deploy') {
+                        sh 'terraform init'
+                        if (params.action == 'create') {
+                            sh """
+                                terraform apply -auto-approve \
+                                -var="image_name=${params.DockerHubUser}/${params.ImageName}" \
+                                -var="image_tag=${params.ImageTag}"
+                            """
+                        } else {
+                            sh 'terraform destroy -auto-approve'
+                        }
+                    }
+                }
+            }
+        }
     }
 }
